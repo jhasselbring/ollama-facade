@@ -20,7 +20,7 @@ if (!frontendToken) {
 
 // Proxy configuration
 const backendProxy = createProxyMiddleware({
-    target: process.env.BACKEND_URL || 'http://localhost:3000',
+    target: process.env.BACKEND_URL || 'https://llm.toolbox.plus',
     changeOrigin: true,
     onProxyReq: (proxyReq, req, res) => {
         // Add the bearer token to all requests
