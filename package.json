@@ -1,0 +1,22 @@
+{
+  "name": "ollama-facade",
+  "version": "1.0.0",
+  "description": "Express proxy servers for Ollama with API token authentication",
+  "scripts": {
+    "proxy:be": "node src/backend/index.js",
+    "proxy:fe": "node src/frontend/index.js",
+    "proxy:be:dev": "nodemon src/backend/index.js",
+    "proxy:fe:dev": "nodemon src/frontend/index.js",
+    "dev": "concurrently \"npm run proxy:be:dev\" \"npm run proxy:fe:dev\""
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "http-proxy-middleware": "^2.0.6",
+    "dotenv": "^16.3.1",
+    "cors": "^2.8.5"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.2",
+    "concurrently": "^8.2.2"
+  }
+} 
