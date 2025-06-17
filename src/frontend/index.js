@@ -25,15 +25,25 @@ app.use((req, res, next) => {
 const backendProxy = createProxyMiddleware({
     target: process.env.BACKEND_URL || 'https://llm.toolbox.plus',
     changeOrigin: true,
+    secure: true, // Enable HTTPS
+    followRedirects: true, // Follow redirects
+    pathRewrite: {
+        '^/': '/api/' // Add /api/ prefix to all paths
+    },
     onProxyReq: (proxyReq, req, res) => {
-        // Add the bearer token to all requests
-        proxyReq.setHeader('Authorization', `Bearer ${process.env.API_TOKEN}`);
-        
+        // Only set headers if they haven't been set yet
+        if (!proxyReq.getHeader('authorization')) {
+            proxyReq.setHeader('Authorization', `Bearer ${process.env.API_TOKEN}`);
+        }
+
         // Log outgoing request
         console.log('Outgoing request:', {
-            method: proxyReq.method,
-            path: proxyReq.path,
-            headers: proxyReq.getHeaders()
+            method: req.method,
+            path: req.path,
+            headers: {
+                ...req.headers,
+                authorization: `Bearer ${process.env.API_TOKEN}`
+            }
         });
     },
     onProxyRes: (proxyRes, req, res) => {
@@ -43,11 +53,20 @@ const backendProxy = createProxyMiddleware({
             responseBody += chunk;
         });
         proxyRes.on('end', () => {
-            console.log('Incoming response:', {
-                status: proxyRes.statusCode,
-                headers: proxyRes.headers,
-                body: responseBody
-            });
+            try {
+                const parsedBody = JSON.parse(responseBody);
+                console.log('Incoming response:', {
+                    status: proxyRes.statusCode,
+                    headers: proxyRes.headers,
+                    body: parsedBody
+                });
+            } catch (e) {
+                console.log('Incoming response:', {
+                    status: proxyRes.statusCode,
+                    headers: proxyRes.headers,
+                    body: responseBody
+                });
+            }
         });
     }
 });
