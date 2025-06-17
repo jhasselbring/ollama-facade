@@ -10,34 +10,11 @@ const port = process.env.FRONTEND_PORT || 3001;
 app.use(cors());
 app.use(express.json());
 
-// Parse API tokens mapping from environment variable
-let tokenUserMap = {};
-try {
-    const tokensJson = process.env.API_TOKENS_JSON;
-    if (!tokensJson) {
-        console.error('API_TOKENS_JSON is not set in .env file');
-        console.error('Please add API_TOKENS_JSON to your .env file like this:');
-        console.error('API_TOKENS_JSON={"token1":"user1","token2":"user2"}');
-        process.exit(1);
-    }
-    tokenUserMap = JSON.parse(tokensJson);
-    if (Object.keys(tokenUserMap).length === 0) {
-        console.error('API_TOKENS_JSON is empty. Please add at least one token-user mapping.');
-        process.exit(1);
-    }
-} catch (e) {
-    console.error('Error parsing API_TOKENS_JSON. Please check your .env file format.');
-    console.error('Example format: API_TOKENS_JSON={"token1":"user1","token2":"user2"}');
-    console.error('Error details:', e.message);
-    process.exit(1);
-}
-
-// Get the default token (first token in the map)
-const defaultToken = Object.keys(tokenUserMap)[0];
-const defaultUser = tokenUserMap[defaultToken];
-
-if (!defaultToken) {
-    console.error('No tokens found in API_TOKENS_JSON');
+// Get the frontend API token
+const frontendToken = process.env.API_TOKEN;
+if (!frontendToken) {
+    console.error('API_TOKEN is not set in .env file');
+    console.error('Please add API_TOKEN to your .env file');
     process.exit(1);
 }
 
@@ -47,7 +24,7 @@ const backendProxy = createProxyMiddleware({
     changeOrigin: true,
     onProxyReq: (proxyReq, req, res) => {
         // Add the bearer token to all requests
-        proxyReq.setHeader('Authorization', `Bearer ${defaultToken}`);
+        proxyReq.setHeader('Authorization', `Bearer ${frontendToken}`);
     },
     onError: (err, req, res) => {
         console.error('Proxy Error:', err);
@@ -66,6 +43,5 @@ app.get('/health', (req, res) => {
 app.listen(port, () => {
     console.log(`Frontend proxy server running on port ${port}`);
     console.log(`Proxying requests to: ${process.env.BACKEND_URL || 'http://localhost:3000'}`);
-    console.log(`Using default user: ${defaultUser}`);
-    console.log(`Default token: ${defaultToken.substring(0, 8)}...`);
+    console.log(`Using token: ${frontendToken.substring(0, 8)}...`);
 }); 
