@@ -27,8 +27,13 @@ const backendProxy = createProxyMiddleware({
     changeOrigin: true,
     secure: true, // Enable HTTPS
     followRedirects: true, // Follow redirects
-    pathRewrite: {
-        '^/': '/api/' // Add /api/ prefix to all paths
+    pathRewrite: (path) => {
+        // If path already starts with /api/, just return it
+        if (path.startsWith('/api/')) {
+            return path;
+        }
+        // Otherwise add /api/ prefix
+        return `/api${path}`;
     },
     onProxyReq: (proxyReq, req, res) => {
         // Only set headers if they haven't been set yet
