@@ -52,27 +52,40 @@ const backendProxy = createProxyMiddleware({
         });
     },
     onProxyRes: (proxyRes, req, res) => {
-        // Log incoming response
-        let responseBody = '';
-        proxyRes.on('data', (chunk) => {
-            responseBody += chunk;
-        });
-        proxyRes.on('end', () => {
-            try {
-                const parsedBody = JSON.parse(responseBody);
-                console.log('Incoming response:', {
-                    status: proxyRes.statusCode,
-                    headers: proxyRes.headers,
-                    body: parsedBody
-                });
-            } catch (e) {
-                console.log('Incoming response:', {
-                    status: proxyRes.statusCode,
-                    headers: proxyRes.headers,
-                    body: responseBody
-                });
-            }
-        });
+        // Set appropriate headers for streaming
+        proxyRes.headers['x-accel-buffering'] = 'no';
+        proxyRes.headers['cache-control'] = 'no-cache';
+        proxyRes.headers['connection'] = 'keep-alive';
+
+        // For non-streaming responses, log the full response
+        if (!proxyRes.headers['transfer-encoding']?.includes('chunked')) {
+            let responseBody = '';
+            proxyRes.on('data', (chunk) => {
+                responseBody += chunk;
+            });
+            proxyRes.on('end', () => {
+                try {
+                    const parsedBody = JSON.parse(responseBody);
+                    console.log('Incoming response:', {
+                        status: proxyRes.statusCode,
+                        headers: proxyRes.headers,
+                        body: parsedBody
+                    });
+                } catch (e) {
+                    console.log('Incoming response:', {
+                        status: proxyRes.statusCode,
+                        headers: proxyRes.headers,
+                        body: responseBody
+                    });
+                }
+            });
+        } else {
+            // For streaming responses, just log the start
+            console.log('Streaming response started:', {
+                status: proxyRes.statusCode,
+                headers: proxyRes.headers
+            });
+        }
     }
 });
 

@@ -57,6 +57,19 @@ const ollamaProxy = createProxyMiddleware({
     pathRewrite: {
         '^/api': '', // Remove /api prefix when forwarding to Ollama
     },
+    onProxyReq: (proxyReq, req, res) => {
+        // Log outgoing request
+        console.log(`User: ${req.user} is making a request to ${req.method} ${req.path}`);
+    },
+    onProxyRes: (proxyRes, req, res) => {
+        // Set appropriate headers for streaming
+        proxyRes.headers['x-accel-buffering'] = 'no';
+        proxyRes.headers['cache-control'] = 'no-cache';
+        proxyRes.headers['connection'] = 'keep-alive';
+        
+        // Log streaming response
+        console.log(`Streaming response for ${req.method} ${req.path}`);
+    },
     onError: (err, req, res) => {
         console.error('Proxy Error:', err);
         res.status(500).json({ error: 'Proxy error occurred' });
