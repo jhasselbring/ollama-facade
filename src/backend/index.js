@@ -10,6 +10,17 @@ const port = process.env.BACKEND_PORT || 3000;
 app.use(cors());
 app.use(express.json());
 
+// Request logging middleware
+app.use((req, res, next) => {
+    console.log('\n=== Incoming Request ===');
+    console.log(`Method: ${req.method}`);
+    console.log(`Path: ${req.path}`);
+    console.log('Headers:', JSON.stringify(req.headers, null, 2));
+    console.log('Body:', JSON.stringify(req.body, null, 2));
+    console.log('=====================\n');
+    next();
+});
+
 // Parse API tokens mapping from environment variable
 let tokenUserMap = {};
 try {
@@ -50,6 +61,10 @@ const authenticateToken = (req, res, next) => {
     next();
 };
 
+// Retry configuration
+const MAX_RETRIES = 3;
+const RETRY_DELAY = 1000; // 1 second
+
 // Proxy configuration
 const ollamaProxy = createProxyMiddleware({
     target: process.env.OLLAMA_SERVER_URL,
@@ -58,8 +73,15 @@ const ollamaProxy = createProxyMiddleware({
         '^/api': '', // Remove /api prefix when forwarding to Ollama
     },
     onProxyReq: (proxyReq, req, res) => {
-        // Log outgoing request
-        console.log(`User: ${req.user} is making a request to ${req.method} ${req.path}`);
+        console.log('\n=== Outgoing Request to Ollama ===');
+        console.log(`User: ${req.user}`);
+        console.log(`Method: ${req.method}`);
+        console.log(`Path: ${req.path}`);
+        console.log('Headers:', JSON.stringify(proxyReq.getHeaders(), null, 2));
+        console.log('================================\n');
+
+        // Add retry count to request
+        req.retryCount = req.retryCount || 0;
     },
     onProxyRes: (proxyRes, req, res) => {
         // Set appropriate headers for streaming
@@ -67,12 +89,68 @@ const ollamaProxy = createProxyMiddleware({
         proxyRes.headers['cache-control'] = 'no-cache';
         proxyRes.headers['connection'] = 'keep-alive';
         
-        // Log streaming response
-        console.log(`Streaming response for ${req.method} ${req.path}`);
+        console.log('\n=== Incoming Response from Ollama ===');
+        console.log(`Status: ${proxyRes.statusCode}`);
+        console.log('Headers:', JSON.stringify(proxyRes.headers, null, 2));
+        
+        if (!proxyRes.headers['transfer-encoding']?.includes('chunked')) {
+            let responseBody = '';
+            proxyRes.on('data', (chunk) => {
+                responseBody += chunk;
+            });
+            proxyRes.on('end', () => {
+                try {
+                    const parsedBody = JSON.parse(responseBody);
+                    console.log('Body:', JSON.stringify(parsedBody, null, 2));
+                } catch (e) {
+                    console.log('Body:', responseBody);
+                }
+                console.log('================================\n');
+            });
+        } else {
+            console.log('Streaming response started');
+            console.log('================================\n');
+        }
     },
     onError: (err, req, res) => {
-        console.error('Proxy Error:', err);
-        res.status(500).json({ error: 'Proxy error occurred' });
+        console.error('\n=== Proxy Error ===');
+        console.error('Error:', err);
+        console.error('Request:', {
+            method: req.method,
+            path: req.path,
+            headers: req.headers
+        });
+
+        // Handle retries for connection errors
+        if (err.code === 'ECONNRESET' || err.code === 'ECONNREFUSED') {
+            const retryCount = req.retryCount || 0;
+            
+            if (retryCount < MAX_RETRIES) {
+                console.error(`Retrying request (${retryCount + 1}/${MAX_RETRIES})...`);
+                req.retryCount = retryCount + 1;
+                
+                setTimeout(() => {
+                    // Replay the request
+                    const proxy = createProxyMiddleware({
+                        target: process.env.OLLAMA_SERVER_URL,
+                        changeOrigin: true,
+                        pathRewrite: {
+                            '^/api': '',
+                        }
+                    });
+                    proxy(req, res, () => {});
+                }, RETRY_DELAY * (retryCount + 1));
+                
+                return;
+            }
+        }
+
+        console.error('===================\n');
+        res.status(500).json({ 
+            error: 'Proxy error occurred',
+            message: err.message,
+            code: err.code
+        });
     }
 });
 

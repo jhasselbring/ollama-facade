@@ -12,12 +12,12 @@ app.use(express.json());
 
 // Request logging middleware
 app.use((req, res, next) => {
-    console.log('Incoming request:', {
-        method: req.method,
-        path: req.path,
-        body: req.body,
-        headers: req.headers
-    });
+    console.log('\n=== Incoming Request to Frontend ===');
+    console.log(`Method: ${req.method}`);
+    console.log(`Path: ${req.path}`);
+    console.log('Headers:', JSON.stringify(req.headers, null, 2));
+    console.log('Body:', JSON.stringify(req.body, null, 2));
+    console.log('================================\n');
     next();
 });
 
@@ -41,21 +41,24 @@ const backendProxy = createProxyMiddleware({
             proxyReq.setHeader('Authorization', `Bearer ${process.env.API_TOKEN}`);
         }
 
-        // Log outgoing request
-        console.log('Outgoing request:', {
-            method: req.method,
-            path: req.path,
-            headers: {
-                ...req.headers,
-                authorization: `Bearer ${process.env.API_TOKEN}`
-            }
-        });
+        console.log('\n=== Outgoing Request to Backend ===');
+        console.log(`Method: ${req.method}`);
+        console.log(`Path: ${req.path}`);
+        console.log('Headers:', JSON.stringify({
+            ...req.headers,
+            authorization: `Bearer ${process.env.API_TOKEN}`
+        }, null, 2));
+        console.log('================================\n');
     },
     onProxyRes: (proxyRes, req, res) => {
         // Set appropriate headers for streaming
         proxyRes.headers['x-accel-buffering'] = 'no';
         proxyRes.headers['cache-control'] = 'no-cache';
         proxyRes.headers['connection'] = 'keep-alive';
+
+        console.log('\n=== Incoming Response from Backend ===');
+        console.log(`Status: ${proxyRes.statusCode}`);
+        console.log('Headers:', JSON.stringify(proxyRes.headers, null, 2));
 
         // For non-streaming responses, log the full response
         if (!proxyRes.headers['transfer-encoding']?.includes('chunked')) {
@@ -66,26 +69,27 @@ const backendProxy = createProxyMiddleware({
             proxyRes.on('end', () => {
                 try {
                     const parsedBody = JSON.parse(responseBody);
-                    console.log('Incoming response:', {
-                        status: proxyRes.statusCode,
-                        headers: proxyRes.headers,
-                        body: parsedBody
-                    });
+                    console.log('Body:', JSON.stringify(parsedBody, null, 2));
                 } catch (e) {
-                    console.log('Incoming response:', {
-                        status: proxyRes.statusCode,
-                        headers: proxyRes.headers,
-                        body: responseBody
-                    });
+                    console.log('Body:', responseBody);
                 }
+                console.log('================================\n');
             });
         } else {
-            // For streaming responses, just log the start
-            console.log('Streaming response started:', {
-                status: proxyRes.statusCode,
-                headers: proxyRes.headers
-            });
+            console.log('Streaming response started');
+            console.log('================================\n');
         }
+    },
+    onError: (err, req, res) => {
+        console.error('\n=== Proxy Error ===');
+        console.error('Error:', err);
+        console.error('Request:', {
+            method: req.method,
+            path: req.path,
+            headers: req.headers
+        });
+        console.error('===================\n');
+        res.status(500).json({ error: 'Proxy error occurred' });
     }
 });
 
