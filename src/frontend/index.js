@@ -31,14 +31,7 @@ const backendProxy = createProxyMiddleware({
     changeOrigin: true,
     secure: true, // Enable HTTPS
     followRedirects: true, // Follow redirects
-    pathRewrite: (path) => {
-        // If path already starts with /api/, just return it
-        if (path.startsWith('/api/')) {
-            return path;
-        }
-        // Otherwise add /api/ prefix
-        return `/api${path}`;
-    },
+    // Remove pathRewrite since we want to preserve the /api path
     onProxyReq: (proxyReq, req, res) => {
         // Only set headers if they haven't been set yet
         if (!proxyReq.getHeader('authorization')) {
@@ -110,13 +103,7 @@ const backendProxy = createProxyMiddleware({
                         target: process.env.BACKEND_URL || 'https://llm.toolbox.plus',
                         changeOrigin: true,
                         secure: true,
-                        followRedirects: true,
-                        pathRewrite: (path) => {
-                            if (path.startsWith('/api/')) {
-                                return path;
-                            }
-                            return `/api${path}`;
-                        }
+                        followRedirects: true
                     });
                     proxy(req, res, () => {});
                 }, RETRY_DELAY * (retryCount + 1));

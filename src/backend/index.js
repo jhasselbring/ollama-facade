@@ -69,9 +69,7 @@ const RETRY_DELAY = 1000; // 1 second
 const ollamaProxy = createProxyMiddleware({
     target: process.env.OLLAMA_SERVER_URL,
     changeOrigin: true,
-    pathRewrite: {
-        '^/api': '', // Remove /api prefix when forwarding to Ollama
-    },
+    // Remove pathRewrite since Ollama already has /api endpoint
     onProxyReq: (proxyReq, req, res) => {
         console.log('\n=== Outgoing Request to Ollama ===');
         console.log(`User: ${req.user}`);
@@ -133,10 +131,7 @@ const ollamaProxy = createProxyMiddleware({
                     // Replay the request
                     const proxy = createProxyMiddleware({
                         target: process.env.OLLAMA_SERVER_URL,
-                        changeOrigin: true,
-                        pathRewrite: {
-                            '^/api': '',
-                        }
+                        changeOrigin: true
                     });
                     proxy(req, res, () => {});
                 }, RETRY_DELAY * (retryCount + 1));
