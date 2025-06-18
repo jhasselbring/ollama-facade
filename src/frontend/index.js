@@ -21,6 +21,10 @@ app.use((req, res, next) => {
     next();
 });
 
+// Retry configuration
+const MAX_RETRIES = 3;
+const RETRY_DELAY = 1000; // 1 second
+
 // Proxy configuration
 const backendProxy = createProxyMiddleware({
     target: process.env.BACKEND_URL || 'https://llm.toolbox.plus',
@@ -40,6 +44,9 @@ const backendProxy = createProxyMiddleware({
         if (!proxyReq.getHeader('authorization')) {
             proxyReq.setHeader('Authorization', `Bearer ${process.env.API_TOKEN}`);
         }
+
+        // Add retry count to request
+        req.retryCount = req.retryCount || 0;
 
         console.log('\n=== Outgoing Request to Backend ===');
         console.log(`Method: ${req.method}`);
@@ -88,8 +95,42 @@ const backendProxy = createProxyMiddleware({
             path: req.path,
             headers: req.headers
         });
+
+        // Handle retries for connection errors
+        if (err.code === 'ECONNRESET' || err.code === 'ECONNREFUSED') {
+            const retryCount = req.retryCount || 0;
+            
+            if (retryCount < MAX_RETRIES) {
+                console.error(`Retrying request (${retryCount + 1}/${MAX_RETRIES})...`);
+                req.retryCount = retryCount + 1;
+                
+                setTimeout(() => {
+                    // Replay the request
+                    const proxy = createProxyMiddleware({
+                        target: process.env.BACKEND_URL || 'https://llm.toolbox.plus',
+                        changeOrigin: true,
+                        secure: true,
+                        followRedirects: true,
+                        pathRewrite: (path) => {
+                            if (path.startsWith('/api/')) {
+                                return path;
+                            }
+                            return `/api${path}`;
+                        }
+                    });
+                    proxy(req, res, () => {});
+                }, RETRY_DELAY * (retryCount + 1));
+                
+                return;
+            }
+        }
+
         console.error('===================\n');
-        res.status(500).json({ error: 'Proxy error occurred' });
+        res.status(500).json({ 
+            error: 'Proxy error occurred',
+            message: err.message,
+            code: err.code
+        });
     }
 });
 
