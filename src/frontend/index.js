@@ -2,6 +2,8 @@ require('dotenv').config();
 const express = require('express');
 const { createProxyMiddleware } = require('http-proxy-middleware');
 const cors = require('cors');
+const http = require('http');
+const https = require('https');
 
 const app = express();
 const port = process.env.FRONTEND_PORT || 3001;
@@ -25,14 +27,23 @@ app.use((req, res, next) => {
 const MAX_RETRIES = 2;
 const RETRY_DELAY = 2000; // 2 seconds
 
+// Create custom agent with keep-alive
+const agent = new https.Agent({
+    keepAlive: true,
+    keepAliveMsecs: 60000,
+    maxSockets: 100,
+    maxFreeSockets: 10,
+    timeout: 30000
+});
+
 // Proxy configuration
 const backendProxy = createProxyMiddleware({
     target: process.env.BACKEND_URL || 'https://llm.toolbox.plus',
     changeOrigin: true,
-    secure: true, // Enable HTTPS
-    followRedirects: true, // Follow redirects
-    timeout: 30000, // 30 second timeout
-    // Remove pathRewrite since we want to preserve the /api path
+    secure: true,
+    followRedirects: true,
+    timeout: 30000,
+    agent: agent,
     onProxyReq: (proxyReq, req, res) => {
         // Only set headers if they haven't been set yet
         if (!proxyReq.getHeader('authorization')) {
@@ -41,6 +52,10 @@ const backendProxy = createProxyMiddleware({
 
         // Add retry count to request
         req.retryCount = req.retryCount || 0;
+
+        // Set keep-alive headers
+        proxyReq.setHeader('Connection', 'keep-alive');
+        proxyReq.setHeader('Keep-Alive', 'timeout=60');
 
         console.log('\n=== Outgoing Request to Backend ===');
         console.log(`Method: ${req.method}`);
@@ -96,13 +111,20 @@ const backendProxy = createProxyMiddleware({
             req.retryCount = 1;
             
             setTimeout(() => {
-                // Replay the request
+                // Replay the request with new agent
                 const proxy = createProxyMiddleware({
                     target: process.env.BACKEND_URL || 'https://llm.toolbox.plus',
                     changeOrigin: true,
                     secure: true,
                     followRedirects: true,
-                    timeout: 30000 // 30 second timeout
+                    timeout: 30000,
+                    agent: new https.Agent({
+                        keepAlive: true,
+                        keepAliveMsecs: 60000,
+                        maxSockets: 100,
+                        maxFreeSockets: 10,
+                        timeout: 30000
+                    })
                 });
                 proxy(req, res, () => {});
             }, RETRY_DELAY);
@@ -123,12 +145,13 @@ const backendProxy = createProxyMiddleware({
 // Apply proxy to all routes
 app.use('/', backendProxy);
 
-// Health check endpoint
-app.get('/health', (req, res) => {
-    res.json({ status: 'ok' });
-});
+// Create server with keep-alive
+const server = http.createServer({
+    keepAlive: true,
+    keepAliveTimeout: 60000
+}, app);
 
-app.listen(port, () => {
+server.listen(port, () => {
     console.log(`Frontend proxy running on port ${port}`);
     console.log(`Proxying to: ${process.env.BACKEND_URL || 'https://llm.toolbox.plus'}`);
 }); 
