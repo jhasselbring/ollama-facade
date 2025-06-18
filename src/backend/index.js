@@ -62,8 +62,8 @@ const authenticateToken = (req, res, next) => {
 };
 
 // Retry configuration
-const MAX_RETRIES = 3;
-const RETRY_DELAY = 1000; // 1 second
+const MAX_RETRIES = 2;
+const RETRY_DELAY = 2000; // 2 seconds
 
 // Proxy configuration
 const ollamaProxy = createProxyMiddleware({
@@ -120,31 +120,30 @@ const ollamaProxy = createProxyMiddleware({
         });
 
         // Handle retries for connection errors
-        if (err.code === 'ECONNRESET' || err.code === 'ECONNREFUSED') {
-            const retryCount = req.retryCount || 0;
+        if ((err.code === 'ECONNRESET' || err.code === 'ECONNREFUSED') && !req.retryCount) {
+            console.error(`Retrying request (1/${MAX_RETRIES})...`);
+            req.retryCount = 1;
             
-            if (retryCount < MAX_RETRIES) {
-                console.error(`Retrying request (${retryCount + 1}/${MAX_RETRIES})...`);
-                req.retryCount = retryCount + 1;
-                
-                setTimeout(() => {
-                    // Replay the request
-                    const proxy = createProxyMiddleware({
-                        target: process.env.OLLAMA_SERVER_URL,
-                        changeOrigin: true
-                    });
-                    proxy(req, res, () => {});
-                }, RETRY_DELAY * (retryCount + 1));
-                
-                return;
-            }
+            setTimeout(() => {
+                // Replay the request
+                const proxy = createProxyMiddleware({
+                    target: process.env.OLLAMA_SERVER_URL,
+                    changeOrigin: true,
+                    secure: true,
+                    timeout: 30000 // 30 second timeout
+                });
+                proxy(req, res, () => {});
+            }, RETRY_DELAY);
+            
+            return;
         }
 
         console.error('===================\n');
         res.status(500).json({ 
             error: 'Proxy error occurred',
             message: err.message,
-            code: err.code
+            code: err.code,
+            retried: req.retryCount > 0
         });
     }
 });

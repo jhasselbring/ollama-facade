@@ -22,8 +22,8 @@ app.use((req, res, next) => {
 });
 
 // Retry configuration
-const MAX_RETRIES = 3;
-const RETRY_DELAY = 1000; // 1 second
+const MAX_RETRIES = 2;
+const RETRY_DELAY = 2000; // 2 seconds
 
 // Proxy configuration
 const backendProxy = createProxyMiddleware({
@@ -31,6 +31,7 @@ const backendProxy = createProxyMiddleware({
     changeOrigin: true,
     secure: true, // Enable HTTPS
     followRedirects: true, // Follow redirects
+    timeout: 30000, // 30 second timeout
     // Remove pathRewrite since we want to preserve the /api path
     onProxyReq: (proxyReq, req, res) => {
         // Only set headers if they haven't been set yet
@@ -90,33 +91,31 @@ const backendProxy = createProxyMiddleware({
         });
 
         // Handle retries for connection errors
-        if (err.code === 'ECONNRESET' || err.code === 'ECONNREFUSED') {
-            const retryCount = req.retryCount || 0;
+        if ((err.code === 'ECONNRESET' || err.code === 'ECONNREFUSED') && !req.retryCount) {
+            console.error(`Retrying request (1/${MAX_RETRIES})...`);
+            req.retryCount = 1;
             
-            if (retryCount < MAX_RETRIES) {
-                console.error(`Retrying request (${retryCount + 1}/${MAX_RETRIES})...`);
-                req.retryCount = retryCount + 1;
-                
-                setTimeout(() => {
-                    // Replay the request
-                    const proxy = createProxyMiddleware({
-                        target: process.env.BACKEND_URL || 'https://llm.toolbox.plus',
-                        changeOrigin: true,
-                        secure: true,
-                        followRedirects: true
-                    });
-                    proxy(req, res, () => {});
-                }, RETRY_DELAY * (retryCount + 1));
-                
-                return;
-            }
+            setTimeout(() => {
+                // Replay the request
+                const proxy = createProxyMiddleware({
+                    target: process.env.BACKEND_URL || 'https://llm.toolbox.plus',
+                    changeOrigin: true,
+                    secure: true,
+                    followRedirects: true,
+                    timeout: 30000 // 30 second timeout
+                });
+                proxy(req, res, () => {});
+            }, RETRY_DELAY);
+            
+            return;
         }
 
         console.error('===================\n');
         res.status(500).json({ 
             error: 'Proxy error occurred',
             message: err.message,
-            code: err.code
+            code: err.code,
+            retried: req.retryCount > 0
         });
     }
 });
